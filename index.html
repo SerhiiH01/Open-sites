@@ -21,7 +21,7 @@
       radial-gradient(30% 30% at 60% 20%, #7a1d4f 0%, transparent 70%);
     animation:drift 24s ease-in-out infinite alternate; }
   @keyframes drift { to { transform:translate(4%, -3%) rotate(8deg) scale(1.1); } }
-  .ui { position:fixed; left:0; right:0; pointer-events:none; text-align:center; padding:0 16px; }
+  .ui { position:fixed; left:0; right:0; pointer-events:none; z-index:2; text-align:center; padding:0 16px; }
   .top { top:calc(env(safe-area-inset-top,0px) + 22px); font-size:11px; letter-spacing:.42em; text-transform:uppercase; color:var(--dim); }
   .bottom { bottom:calc(env(safe-area-inset-bottom,0px) + 26px); font-size:13px; color:var(--dim); font-weight:300; }
   .bottom b { color:var(--ink); font-weight:500; }

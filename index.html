@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Звёздная пыль</title>
+<meta name="description" content="Тысячи звёзд собираются в слова. Коснись — и они разлетятся.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@700;900&family=Manrope:wght@300;500&display=swap" rel="stylesheet">
+<style>
+  :root { --ink:#f4efe6; --dim:rgba(244,239,230,.55); }
+  * { box-sizing:border-box; }
+  html, body { margin:0; height:100%; background:#05040a; color:var(--ink); overflow:hidden;
+    font-family:Manrope, system-ui, sans-serif; -webkit-tap-highlight-color:transparent; }
+  canvas { position:fixed; inset:0; width:100%; height:100%; display:block; cursor:crosshair; touch-action:none; }
+  #aurora { position:fixed; inset:-20%; pointer-events:none; filter:blur(60px); opacity:.55;
+    background:
+      radial-gradient(40% 35% at 20% 30%, #3b1d7a 0%, transparent 70%),
+      radial-gradient(35% 30% at 80% 70%, #0e5c6e 0%, transparent 70%),
+      radial-gradient(30% 30% at 60% 20%, #7a1d4f 0%, transparent 70%);
+    animation:drift 24s ease-in-out infinite alternate; }
+  @keyframes drift { to { transform:translate(4%, -3%) rotate(8deg) scale(1.1); } }
+  .ui { position:fixed; left:0; right:0; pointer-events:none; text-align:center; padding:0 16px; }
+  .top { top:calc(env(safe-area-inset-top,0px) + 22px); font-size:11px; letter-spacing:.42em; text-transform:uppercase; color:var(--dim); }
+  .bottom { bottom:calc(env(safe-area-inset-bottom,0px) + 26px); font-size:13px; color:var(--dim); font-weight:300; }
+  .bottom b { color:var(--ink); font-weight:500; }
+  .dots { display:flex; gap:8px; justify-content:center; margin-top:14px; }
+  .dots i { width:6px; height:6px; border-radius:50%; background:rgba(244,239,230,.2); transition:all .5s; }
+  .dots i.on { background:var(--ink); width:22px; border-radius:3px; }
+  #intro { position:fixed; inset:0; display:grid; place-items:center; background:#05040a; z-index:5;
+    transition:opacity 1.4s ease, visibility 1.4s; }
+  #intro.gone { opacity:0; visibility:hidden; }
+  #intro span { font-family:Unbounded, sans-serif; font-weight:700; font-size:clamp(14px,2.4vw,20px);
+    letter-spacing:.5em; text-transform:uppercase; opacity:0; animation:fade 2.2s ease forwards; }
+  @keyframes fade { 30% { opacity:1; } 100% { opacity:.9; } }
+</style>
+</head>
+<body>
+<div id="aurora"></div>
+<canvas id="c"></canvas>
+<div class="ui top">Звёздная пыль</div>
+<div class="ui bottom">
+  Проведи рукой — звёзды разлетятся · <b>Нажми</b> — они сложат новую мысль · <b>Удерживай</b> — родится галактика
+  <div class="dots" id="dots"></div>
+</div>
+<div id="intro"><span>Смотри</span></div>
+
+<script>
+(() => {
+  const phrases = [
+    ["Мы сделаны", "из звёзд"],
+    ["Начни", "сегодня"],
+    ["Ты можешь", "больше"],
+    ["Мечтай", "громко"],
+    ["Всё только", "начинается"],
+    ["Создавай", "свой мир"]
+  ];
+  const palette = [[255,214,165],[255,173,205],[164,214,255],[196,176,255],[255,255,255]];
+
+  const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+  const dotsEl = document.getElementById('dots');
+  phrases.forEach(() => dotsEl.appendChild(document.createElement('i')));
+
+  let W, H, DPR, parts = [], targets = [], idx = 0, stars = [];
+  const mouse = { x:-9999, y:-9999, down:false, downAt:0 };
+  let mode = 'text'; // text | galaxy
+  let fontReady = false;
+
+  function sampleText(lines) {
+    const off = document.createElement('canvas');
+    off.width = W; off.height = H;
+    const o = off.getContext('2d');
+    const size = Math.min(W / (Math.max(...lines.map(l => l.length)) * 0.72), H / 4.2, 170);
+    o.fillStyle = '#fff'; o.textAlign = 'center'; o.textBaseline = 'middle';
+    o.font = `900 ${size}px ${fontReady ? 'Unbounded' : 'system-ui'}, sans-serif`;
+    const lh = size * 1.12, y0 = H / 2 - (lines.length - 1) * lh / 2;
+    lines.forEach((l, i) => o.fillText(l.toUpperCase(), W / 2, y0 + i * lh));
+    const data = o.getImageData(0, 0, W, H).data;
+    const step = Math.max(4, Math.round(Math.sqrt(W * H / (W < 700 ? 2600 : 5200)) * 0.55));
+    const pts = [];
+    for (let y = 0; y < H; y += step)
+      for (let x = 0; x < W; x += step)
+        if (data[(y * W + x) * 4 + 3] > 128) pts.push([x + (Math.random() - .5) * 1.5, y + (Math.random() - .5) * 1.5]);
+    return pts.sort(() => Math.random() - .5);
+  }
+
+  function galaxyTargets(n) {
+    const pts = [], arms = 4, R = Math.min(W, H) * 0.44;
+    for (let i = 0; i < n; i++) {
+      const r = Math.pow(Math.random(), 0.6) * R;
+      const a = (i % arms) / arms * Math.PI * 2 + r / R * 4.2 + (Math.random() - .5) * 0.5;
+      pts.push([W / 2 + Math.cos(a) * r, H / 2 + Math.sin(a) * r * 0.62]);
+    }
+    return pts;
+  }
+
+  function setTargets(pts) {
+    targets = pts;
+    while (parts.length < pts.length) {
+      const c = palette[(Math.random() * palette.length) | 0];
+      parts.push({ x: Math.random() * W, y: Math.random() * H, vx: 0, vy: 0,
+        s: Math.random() * 1.4 + 0.6, c, tw: Math.random() * Math.PI * 2 });
+    }
+    parts.forEach((p, i) => {
+      if (i < pts.length) { p.tx = pts[i][0]; p.ty = pts[i][1]; p.free = false; }
+      else { p.free = true; }
+    });
+  }
+
+  function showPhrase(i) {
+    idx = (i + phrases.length) % phrases.length;
+    mode = 'text';
+    setTargets(sampleText(phrases[idx]));
+    // kick everything for a burst transition
+    parts.forEach(p => { p.vx += (Math.random() - .5) * 18; p.vy += (Math.random() - .5) * 18; });
+    [...dotsEl.children].forEach((d, k) => d.classList.toggle('on', k === idx));
+  }
+
+  function resize() {
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = innerWidth; H = innerHeight;
+    cv.width = W * DPR; cv.height = H * DPR;
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    stars = Array.from({ length: Math.round(W * H / 5000) }, () =>
+      ({ x: Math.random() * W, y: Math.random() * H, r: Math.random() * 0.9, t: Math.random() * 6 }));
+    if (mode === 'galaxy') setTargets(galaxyTargets(parts.length));
+    else setTargets(sampleText(phrases[idx]));
+  }
+
+  let t = 0, rot = 0;
+  function frame() {
+    t += 0.016;
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = 'rgba(5,4,10,0.28)';
+    ctx.fillRect(0, 0, W, H);
+
+    // background stars
+    for (const s of stars) {
+      ctx.globalAlpha = 0.25 + Math.sin(t * 1.3 + s.t) * 0.2;
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(s.x, s.y, s.r + .3, s.r + .3);
+    }
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'lighter';
+
+    // holding long → galaxy
+    if (mouse.down && mode !== 'galaxy' && performance.now() - mouse.downAt > 650) {
+      mode = 'galaxy'; setTargets(galaxyTargets(parts.length));
+    }
+    if (mode === 'galaxy') rot += 0.004;
+    const cr = Math.cos(rot), sr = Math.sin(rot);
+
+    const R = Math.min(W, H) < 600 ? 80 : 120;
+    for (const p of parts) {
+      let tx = p.tx, ty = p.ty;
+      if (mode === 'galaxy') {
+        const dx = tx - W / 2, dy = (ty - H / 2) / 0.62;
+        tx = W / 2 + dx * cr - dy * sr; ty = H / 2 + (dx * sr + dy * cr) * 0.62;
+      }
+      if (p.free) {
+        p.vx += Math.sin(p.tw + t * 0.4) * 0.02; p.vy -= 0.01;
+        if (p.y < -10) { p.y = H + 10; p.x = Math.random() * W; }
+      } else {
+        p.vx += (tx - p.x) * 0.012; p.vy += (ty - p.y) * 0.012;
+      }
+      const mx = p.x - mouse.x, my = p.y - mouse.y, d2 = mx * mx + my * my;
+      if (d2 < R * R) {
+        const d = Math.sqrt(d2) || 1, f = (1 - d / R) * 6;
+        p.vx += mx / d * f; p.vy += my / d * f;
+      }
+      p.vx *= 0.86; p.vy *= 0.86;
+      p.x += p.vx; p.y += p.vy;
+
+      const sp = Math.min(Math.hypot(p.vx, p.vy), 12);
+      const a = 0.55 + Math.sin(t * 3 + p.tw) * 0.25 + sp * 0.03;
+      const [r, g, b] = p.c;
+      ctx.fillStyle = `rgba(${r},${g},${b},${a})`;
+      const s = p.s + sp * 0.12;
+      ctx.beginPath(); ctx.arc(p.x, p.y, s, 0, 6.283); ctx.fill();
+      if (p.s > 1.7) {
+        ctx.fillStyle = `rgba(${r},${g},${b},${a * 0.12})`;
+        ctx.beginPath(); ctx.arc(p.x, p.y, s * 4, 0, 6.283); ctx.fill();
+      }
+    }
+    requestAnimationFrame(frame);
+  }
+
+  function pos(e) { const q = e.touches ? e.touches[0] : e; if (q) { mouse.x = q.clientX; mouse.y = q.clientY; } }
+  cv.addEventListener('pointermove', pos);
+  cv.addEventListener('pointerdown', e => { pos(e); mouse.down = true; mouse.downAt = performance.now(); });
+  cv.addEventListener('pointerup', () => {
+    const quick = performance.now() - mouse.downAt < 650;
+    mouse.down = false;
+    if (mode === 'galaxy') showPhrase(idx + 1);
+    else if (quick) showPhrase(idx + 1);
+  });
+  cv.addEventListener('pointerleave', () => { mouse.x = mouse.y = -9999; mouse.down = false; });
+  addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === ' ') showPhrase(idx + 1);
+    if (e.key === 'ArrowLeft') showPhrase(idx - 1);
+  });
+  let rt; addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(resize, 150); });
+
+  // auto-advance when idle
+  let lastAct = performance.now();
+  ['pointermove','pointerdown','keydown'].forEach(ev => addEventListener(ev, () => lastAct = performance.now()));
+  setInterval(() => { if (mode === 'text' && performance.now() - lastAct > 7000) showPhrase(idx + 1); }, 7000);
+
+  resize();
+  // start with stars scattered, then assemble
+  parts.forEach(p => { p.x = Math.random() * W; p.y = Math.random() * H; });
+  requestAnimationFrame(frame);
+  const go = () => {
+    if (fontReady) return;
+    fontReady = true; showPhrase(0);
+    setTimeout(() => document.getElementById('intro').classList.add('gone'), 900);
+  };
+  (document.fonts ? document.fonts.load('900 80px Unbounded').then(go, go) : go());
+  setTimeout(() => { if (!fontReady) go(); }, 2500);
+})();
+</script>
+</body>
+</html>
